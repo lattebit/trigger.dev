@@ -38,6 +38,8 @@ const Env = z.object({
   TRIGGER_DEQUEUE_MAX_RUN_COUNT: z.coerce.number().int().default(10),
   TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT: z.coerce.number().int().default(1),
 
+  TRIGGER_WORKER_MAX_RUN_COUNT: z.coerce.number().int().default(4),
+
   // Optional services
   TRIGGER_WARM_START_URL: z.string().optional(),
   TRIGGER_CHECKPOINT_URL: z.string().optional(),

@@ -31,6 +31,7 @@ if (env.METRICS_COLLECT_DEFAULTS) {
 }
 
 class ManagedSupervisor {
+  private activeTaskCount = 0;
   private readonly workerSession: SupervisorSession;
   private readonly metricsServer?: HttpServer;
   private readonly workloadServer: WorkloadServer;
@@ -142,6 +143,10 @@ class ManagedSupervisor {
           return {};
         }
 
+        if (this.activeTaskCount >= env.TRIGGER_WORKER_MAX_RUN_COUNT) {  //限制最多运行的任务
+          return { skipDequeue: true };
+        }
+
         const resources = await this.resourceMonitor.getNodeResources();
 
         return {
@@ -177,6 +182,7 @@ class ManagedSupervisor {
     });
 
     this.workerSession.on("runQueueMessage", async ({ time, message }) => {
+      this.activeTaskCount++;
       this.logger.log(`Received message with timestamp ${time.toLocaleString()}`, message);
 
       if (message.completedWaitpoints.length > 0) {
@@ -288,6 +294,7 @@ class ManagedSupervisor {
   }
 
   async onRunDisconnected({ run }: { run: { friendlyId: string } }) {
+    this.activeTaskCount = Math.max(0, this.activeTaskCount - 1);
     this.logger.debug("Run disconnected", { run });
     this.workerSession.unsubscribeFromRunNotifications([run.friendlyId]);
   }
