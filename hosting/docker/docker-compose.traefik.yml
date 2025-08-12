@@ -10,40 +10,7 @@ services:
       - "traefik.http.routers.webapp.entrypoints=${TRAEFIK_ENTRYPOINT:-web}"
       - "traefik.http.routers.webapp.tls.certresolver=letsencrypt"
       - "traefik.http.services.webapp.loadbalancer.server.port=3000"
-
-  registry:
-    networks:
-      - traefik
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.registry.rule=Host(`registry.lattebit.com`)"
-      - "traefik.http.routers.registry.entrypoints=${TRAEFIK_ENTRYPOINT:-web}"
-      - "traefik.http.routers.registry.tls.certresolver=letsencrypt"
-      - "traefik.http.services.registry.loadbalancer.server.port=5000"
-        # 增加超时设置
-      - "traefik.http.services.registry.loadbalancer.responseForwarding.readTimeout=600s"
-      - "traefik.http.services.registry.loadbalancer.server.scheme=http"
-      
-      # 创建并应用 buffering 中间件（对大文件传输很重要）
-      - "traefik.http.middlewares.registry-buffer.buffering.memRequestBodyBytes=2147483648"  # 2GB
-      - "traefik.http.middlewares.registry-buffer.buffering.maxRequestBodyBytes=0"  # 不限制
-      - "traefik.http.middlewares.registry-buffer.buffering.memResponseBodyBytes=2147483648"  # 2GB
-      - "traefik.http.middlewares.registry-buffer.buffering.maxResponseBodyBytes=0"  # 不限制
-      - "traefik.http.middlewares.registry-buffer.buffering.retryExpression=IsNetworkError() && Attempts() < 2"
-      
-      # 应用中间件到路由
-      - "traefik.http.routers.registry.middlewares=registry-buffer"
-
-  minio:
-    networks:
-      - traefik
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.minio.rule=Host(`minio.lattebit.com`)"
-      - "traefik.http.routers.minio.entrypoints=${TRAEFIK_ENTRYPOINT:-web}"
-      - "traefik.http.routers.minio.tls.certresolver=letsencrypt"
-      - "traefik.http.services.minio.loadbalancer.server.port=9000"
-
+  
   traefik:
     image: traefik:${TRAEFIK_IMAGE_TAG:-v3.4}
     restart: ${RESTART_POLICY:-unless-stopped}
@@ -64,22 +31,6 @@ services:
       - --certificatesresolvers.letsencrypt.acme.email=dqaria@gmail.com
       - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
       - --log.level=DEBUG
-
-
-      # 添加全局超时设置
-      - --serversTransport.forwardingTimeouts.dialTimeout=30s
-      - --serversTransport.forwardingTimeouts.responseHeaderTimeout=600s
-      - --serversTransport.forwardingTimeouts.idleConnTimeout=90s
-      - --serversTransport.insecureSkipVerify=true
-      - --serversTransport.maxIdleConnsPerHost=200
-      
-      # 添加入口点的传输超时（可选，但建议添加）
-      - --entrypoints.web.transport.respondingTimeouts.readTimeout=600s
-      - --entrypoints.web.transport.respondingTimeouts.writeTimeout=600s
-      - --entrypoints.web.transport.respondingTimeouts.idleTimeout=180s
-      - --entrypoints.websecure.transport.respondingTimeouts.readTimeout=600s
-      - --entrypoints.websecure.transport.respondingTimeouts.writeTimeout=600s
-      - --entrypoints.websecure.transport.respondingTimeouts.idleTimeout=180s
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
