@@ -25,6 +25,8 @@ services:
     user: root
     # Only needed for bootstrap
     command: sh -c "chown -R node:node /home/node/shared && exec ./scripts/entrypoint.sh"
+    sysctls:  # ipv6
+      - net.ipv6.conf.all.disable_ipv6=0
     healthcheck:
       test: ["CMD", "node", "-e", "http.get('http://localhost:3000/healthcheck', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
@@ -146,3 +148,7 @@ networks:
     name: docker-proxy
   webapp:
     name: webapp
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd00:1::/80
