@@ -15,6 +15,7 @@ services:
     ports:
       - ${WEBAPP_PUBLISH_IP:-0.0.0.0}:8030:3000
     depends_on:
+      - postgres
       - redis
       - clickhouse
     networks:
@@ -80,6 +81,31 @@ services:
       AUTH_GITHUB_CLIENT_ID: ${AUTH_GITHUB_CLIENT_ID}
       AUTH_GITHUB_CLIENT_SECRET: ${AUTH_GITHUB_CLIENT_SECRET}
 
+
+  postgres:
+    image: postgres:${POSTGRES_IMAGE_TAG:-14}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
+    ports:
+      - ${POSTGRES_PUBLISH_IP:-127.0.0.1}:5433:5432
+    volumes:
+      - postgres:/var/lib/postgresql/data/
+    networks:
+      - webapp
+    command:
+      - -c
+      - wal_level=logical
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   redis:
     image: redis:${REDIS_IMAGE_TAG:-7}
     restart: ${RESTART_POLICY:-unless-stopped}
@@ -101,6 +127,8 @@ services:
     image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.24}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
+    depends_on:
+      - postgres
     networks:
       - webapp
     environment:
@@ -138,6 +166,7 @@ services:
 
 volumes:
   clickhouse:
+  postgres:
   redis:
   shared:
 
