@@ -15,7 +15,6 @@ services:
     ports:
       - ${WEBAPP_PUBLISH_IP:-0.0.0.0}:8030:3000
     depends_on:
-      - postgres
       - redis
       - clickhouse
     networks:
@@ -102,8 +101,6 @@ services:
     image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.24}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
-    depends_on:
-      - postgres
     networks:
       - webapp
     environment:
