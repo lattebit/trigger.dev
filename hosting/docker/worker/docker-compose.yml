@@ -14,10 +14,6 @@ services:
     logging: *logging-config
     depends_on:
       - docker-proxy
-    networks:
-      - supervisor
-      - docker-proxy
-      - webapp
     volumes:
       - shared:/home/node/shared
     # Only needed for bootstrap
@@ -59,8 +55,6 @@ services:
     logging: *logging-config
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - docker-proxy
     environment:
       - LOG_LEVEL=info
       - POST=1
@@ -77,11 +71,3 @@ services:
 
 volumes:
   shared:
-
-networks:
-  docker-proxy:
-    name: docker-proxy
-  supervisor:
-    name: supervisor
-  webapp:
-    name: webapp
