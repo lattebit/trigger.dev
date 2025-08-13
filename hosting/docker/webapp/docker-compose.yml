@@ -118,8 +118,6 @@ services:
     volumes:
       - clickhouse:/bitnami/clickhouse
       - ../clickhouse/override.xml:/bitnami/clickhouse/etc/config.d/override.xml:ro
-    networks:
-      - webapp
     healthcheck:
       test: ["CMD", "clickhouse-client", "--host", "localhost", "--port", "9000", "--user", "default", "--password", "password", "--query", "SELECT 1"]
       interval: 5s
