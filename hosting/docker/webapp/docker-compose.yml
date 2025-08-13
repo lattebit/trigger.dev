@@ -12,18 +12,21 @@ services:
     image: ghcr.io/triggerdotdev/trigger.dev:${TRIGGER_IMAGE_TAG:-v4-beta}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
-    networks:
-      - webapp
     depends_on:
       - redis
       - clickhouse
+    expose:
+      - "3000"
     volumes:
       - shared:/home/node/shared
-      - ./scripts/entrypoint.sh:/triggerdotdev/scripts/entrypoint.sh:ro
+      - type: bind
+        source: ./scripts/entrypoint.sh
+        target: /entrypoint.sh     # ✅ 单文件挂载到根
+        read_only: true
     # Only needed for bootstrap
     user: root
     # Only needed for bootstrap
-    command: sh -c "chown -R node:node /home/node/shared && exec ./scripts/entrypoint.sh"
+    command: sh -c "chown -R node:node /home/node/shared && exec entrypoint.sh"
     healthcheck:
       test: ["CMD", "node", "-e", "http.get('http://localhost:3000/healthcheck', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
@@ -84,8 +87,6 @@ services:
     image: redis:${REDIS_IMAGE_TAG:-7}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
-    networks:
-      - webapp
     volumes:
       - redis:/data
     healthcheck:
@@ -99,8 +100,6 @@ services:
     image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.24}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
-    networks:
-      - webapp
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
       ELECTRIC_INSECURE: true
@@ -116,8 +115,6 @@ services:
     image: bitnami/clickhouse:${CLICKHOUSE_IMAGE_TAG:-latest}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
-    networks:
-      - webapp
     environment:
       CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_USER:-default}
       CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_PASSWORD:-password}
@@ -135,6 +132,3 @@ volumes:
   clickhouse:
   redis:
   shared:
-
-networks:
-  webapp:
