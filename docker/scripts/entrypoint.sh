@@ -15,16 +15,31 @@ if [ -n "$CLICKHOUSE_URL" ]; then
   echo "Running ClickHouse migrations..."
   export GOOSE_DRIVER=clickhouse
   
-  # Ensure secure=true is in the connection string
-  if echo "$CLICKHOUSE_URL" | grep -q "secure="; then
-    # secure parameter already exists, use as is
-    export GOOSE_DBSTRING="$CLICKHOUSE_URL"
-  elif echo "$CLICKHOUSE_URL" | grep -q "?"; then
-    # URL has query parameters, append secure=true
-    export GOOSE_DBSTRING="${CLICKHOUSE_URL}&secure=true"
+  # Extract host and credentials from CLICKHOUSE_URL (http://user:pass@host:8123)
+  # Convert to goose format (tcp://user:pass@host:9000)
+  if [ -n "$GOOSE_DBSTRING" ]; then
+    # If GOOSE_DBSTRING is explicitly set, use it
+    echo "Using provided GOOSE_DBSTRING"
   else
-    # URL has no query parameters, add secure=true
-    export GOOSE_DBSTRING="${CLICKHOUSE_URL}?secure=true"
+    # Extract components from CLICKHOUSE_URL and build tcp connection string
+    # Pattern: http://user:password@host:8123 -> tcp://user:password@host:9000
+    CLICKHOUSE_HOST=$(echo "$CLICKHOUSE_URL" | sed -E 's|https?://([^:]+):([^@]+)@([^:]+):.*|\3|')
+    CLICKHOUSE_USER=$(echo "$CLICKHOUSE_URL" | sed -E 's|https?://([^:]+):([^@]+)@.*|\1|')
+    CLICKHOUSE_PASS=$(echo "$CLICKHOUSE_URL" | sed -E 's|https?://([^:]+):([^@]+)@.*|\2|')
+    
+    # Default to clickhouse:9000 if extraction fails
+    if [ -z "$CLICKHOUSE_HOST" ]; then
+      CLICKHOUSE_HOST="clickhouse"
+    fi
+    if [ -z "$CLICKHOUSE_USER" ]; then
+      CLICKHOUSE_USER="default"
+    fi
+    if [ -z "$CLICKHOUSE_PASS" ]; then
+      CLICKHOUSE_PASS="password"
+    fi
+    
+    export GOOSE_DBSTRING="tcp://${CLICKHOUSE_USER}:${CLICKHOUSE_PASS}@${CLICKHOUSE_HOST}:9000"
+    echo "Generated GOOSE_DBSTRING from CLICKHOUSE_URL"
   fi
   
   export GOOSE_MIGRATION_DIR=/triggerdotdev/internal-packages/clickhouse/schema
