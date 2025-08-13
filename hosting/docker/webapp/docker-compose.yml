@@ -14,6 +14,8 @@ services:
     logging: *logging-config
     ports:
       - 3000
+    networks:
+      - dokploy-network
     depends_on:
       - redis
       - clickhouse
@@ -84,8 +86,8 @@ services:
     image: redis:${REDIS_IMAGE_TAG:-7}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
-    ports:
-      - ${REDIS_PUBLISH_IP:-127.0.0.1}:6389:6379
+    networks:
+      - dokploy-network
     volumes:
       - redis:/data
     healthcheck:
@@ -99,6 +101,8 @@ services:
     image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.24}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
+    networks:
+      - dokploy-network
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
       ELECTRIC_INSECURE: true
@@ -114,6 +118,8 @@ services:
     image: bitnami/clickhouse:${CLICKHOUSE_IMAGE_TAG:-latest}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
+    networks:
+      - dokploy-network
     environment:
       CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_USER:-default}
       CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_PASSWORD:-password}
@@ -131,3 +137,7 @@ volumes:
   clickhouse:
   redis:
   shared:
+
+networks:
+  dokploy-network:
+    external: true
