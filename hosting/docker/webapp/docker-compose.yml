@@ -59,6 +59,7 @@ services:
       TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: /home/node/shared/worker_token
       # ClickHouse configuration
       CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://default:password@clickhouse:8123?secure=false}
+      GOOSE_DBSTRING: ${GOOSE_DBSTRING:-tcp://default:password@clickhouse:8123?secure=true}
       CLICKHOUSE_LOG_LEVEL: ${CLICKHOUSE_LOG_LEVEL:-info}
       # Run replication
       RUN_REPLICATION_ENABLED: ${RUN_REPLICATION_ENABLED:-1}
