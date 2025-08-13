@@ -13,13 +13,10 @@ services:
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:
-      - ${WEBAPP_PUBLISH_IP:-0.0.0.0}:8030:3000
+      - "3000:3000"
     depends_on:
-      - postgres
       - redis
       - clickhouse
-    networks:
-      - webapp
     volumes:
       - shared:/home/node/shared
     # Only needed for bootstrap
@@ -81,31 +78,6 @@ services:
       AUTH_GITHUB_CLIENT_ID: ${AUTH_GITHUB_CLIENT_ID}
       AUTH_GITHUB_CLIENT_SECRET: ${AUTH_GITHUB_CLIENT_SECRET}
 
-
-  postgres:
-    image: postgres:${POSTGRES_IMAGE_TAG:-14}
-    restart: ${RESTART_POLICY:-unless-stopped}
-    logging: *logging-config
-    ports:
-      - ${POSTGRES_PUBLISH_IP:-127.0.0.1}:5433:5432
-    volumes:
-      - postgres:/var/lib/postgresql/data/
-    networks:
-      - webapp
-    command:
-      - -c
-      - wal_level=logical
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-postgres}
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
   redis:
     image: redis:${REDIS_IMAGE_TAG:-7}
     restart: ${RESTART_POLICY:-unless-stopped}
@@ -114,8 +86,6 @@ services:
       - ${REDIS_PUBLISH_IP:-127.0.0.1}:6389:6379
     volumes:
       - redis:/data
-    networks:
-      - webapp
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -127,10 +97,6 @@ services:
     image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.24}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
-    depends_on:
-      - postgres
-    networks:
-      - webapp
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
       ELECTRIC_INSECURE: true
@@ -146,9 +112,6 @@ services:
     image: bitnami/clickhouse:${CLICKHOUSE_IMAGE_TAG:-latest}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
-    ports:
-      - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9123:8123
-      - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9090:9000
     environment:
       CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_USER:-default}
       CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_PASSWORD:-password}
@@ -166,12 +129,5 @@ services:
 
 volumes:
   clickhouse:
-  postgres:
   redis:
   shared:
-
-networks:
-  docker-proxy:
-    name: docker-proxy
-  webapp:
-    name: webapp
