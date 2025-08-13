@@ -13,7 +13,7 @@ services:
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:
-      - "8030:3000"
+      - 3000
     depends_on:
       - redis
       - clickhouse
