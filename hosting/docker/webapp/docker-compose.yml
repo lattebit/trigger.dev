@@ -26,7 +26,7 @@ services:
     # Only needed for bootstrap
     user: root
     # Only needed for bootstrap
-    command: sh -c "chown -R node:node /home/node/shared && exec sh /entrypoint.sh"
+    command: sh -c "chown -R node:node /home/node/shared && cp /entrypoint.sh /tmp/entrypoint.sh && chmod +x /tmp/entrypoint.sh && exec /tmp/entrypoint.sh"
     healthcheck:
       test: ["CMD", "node", "-e", "http.get('http://localhost:3000/healthcheck', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
