@@ -41,7 +41,12 @@ import { runStatusFromError, ServiceValidationError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { getMachinePreset, machinePresetFromName } from "../machinePresets.js";
 import { retryOutcomeFromCompletion } from "../retrying.js";
-import { isExecuting, isInitialState } from "../statuses.js";
+import {
+  isExecuting,
+  isFinishedOrPendingFinished,
+  isInitialState,
+  isPendingExecuting,
+} from "../statuses.js";
 import { RunEngineOptions } from "../types.js";
 import { BatchSystem } from "./batchSystem.js";
 import { DelayedRunSystem } from "./delayedRunSystem.js";
@@ -313,9 +318,16 @@ export class RunAttemptSystem {
             //if there is a big delay between the snapshot and the attempt, the snapshot might have changed
             //we just want to log because elsewhere it should have been put back into a state where it can be attempted
             this.$.logger.warn(
-              "RunEngine.createRunAttempt(): snapshot has changed since the attempt was created, ignoring."
+              "RunEngine.createRunAttempt(): snapshot has changed since the attempt was created, ignoring.",
+              {
+                snapshotId,
+                latestSnapshotId: latestSnapshot.id,
+              }
             );
-            throw new ServiceValidationError("Snapshot changed", 409);
+            throw new ServiceValidationError("Snapshot changed inside startRunAttempt", 409, {
+              snapshotId,
+              latestSnapshotId: latestSnapshot.id,
+            });
           }
 
           const taskRun = await prisma.taskRun.findFirst({
@@ -345,8 +357,8 @@ export class RunAttemptSystem {
           span.setAttribute("taskRunId", taskRun.id);
           span.setAttribute("taskRunFriendlyId", taskRun.friendlyId);
 
-          if (taskRun.status === "CANCELED") {
-            throw new ServiceValidationError("Task run is cancelled", 400);
+          if (isFinishedOrPendingFinished(latestSnapshot.executionStatus)) {
+            throw new ServiceValidationError("Task run is already finished", 400);
           }
 
           if (!taskRun.lockedById) {
@@ -1321,7 +1333,10 @@ export class RunAttemptSystem {
         });
 
         //if executing, we need to message the worker to cancel the run and put it into `PENDING_CANCEL` status
-        if (isExecuting(latestSnapshot.executionStatus)) {
+        if (
+          isExecuting(latestSnapshot.executionStatus) ||
+          isPendingExecuting(latestSnapshot.executionStatus)
+        ) {
           const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
             run,
             snapshot: {
