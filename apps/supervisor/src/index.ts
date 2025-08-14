@@ -31,7 +31,6 @@ if (env.METRICS_COLLECT_DEFAULTS) {
 }
 
 class ManagedSupervisor {
-  private activeTaskCount = 0;
   private readonly workerSession: SupervisorSession;
   private readonly metricsServer?: HttpServer;
   private readonly workloadServer: WorkloadServer;
@@ -134,15 +133,6 @@ class ManagedSupervisor {
       heartbeatIntervalSeconds: env.TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS,
       sendRunDebugLogs: env.SEND_RUN_DEBUG_LOGS,
       preDequeue: async () => {
-        // 任务数量限制检查（优先级最高）
-        if (this.activeTaskCount >= env.TRIGGER_WORKER_MAX_RUN_COUNT) {
-          this.logger.debug("Skipping dequeue due to activeTaskCount limit", {
-            activeTaskCount: this.activeTaskCount,
-            maxRunCount: env.TRIGGER_WORKER_MAX_RUN_COUNT,
-          });
-          return { skipDequeue: true };
-        }
-
         if (!env.RESOURCE_MONITOR_ENABLED) {
           return {};
         }
@@ -154,20 +144,12 @@ class ManagedSupervisor {
 
         const resources = await this.resourceMonitor.getNodeResources();
 
-        const shouldSkip = resources.cpuAvailable < 0.25 || resources.memoryAvailable < 0.25;
-        if (shouldSkip) {
-          this.logger.debug("Skipping dequeue due to resource constraints", {
-            cpuAvailable: resources.cpuAvailable,
-            memoryAvailable: resources.memoryAvailable,
-          });
-        }
-
         return {
           maxResources: {
             cpu: resources.cpuAvailable,
             memory: resources.memoryAvailable,
           },
-          skipDequeue: shouldSkip,
+          skipDequeue: resources.cpuAvailable < 0.25 || resources.memoryAvailable < 0.25,
         };
       },
       preSkip: async () => {
@@ -196,7 +178,6 @@ class ManagedSupervisor {
 
     this.workerSession.on("runQueueMessage", async ({ time, message }) => {
       this.logger.log(`Received message with timestamp ${time.toLocaleString()}`, message);
-      this.logger.log(`Active tasks before processing: ${this.activeTaskCount}/${env.TRIGGER_WORKER_MAX_RUN_COUNT}`);
 
       if (message.completedWaitpoints.length > 0) {
         this.logger.debug("Run has completed waitpoints", {
@@ -248,8 +229,6 @@ class ManagedSupervisor {
 
       if (didWarmStart) {
         this.logger.log("Warm start successful", { runId: message.run.id });
-        this.activeTaskCount++;
-        this.logger.log(`Active tasks after warm start: ${this.activeTaskCount}/${env.TRIGGER_WORKER_MAX_RUN_COUNT}`);
         return;
       }
 
@@ -269,9 +248,6 @@ class ManagedSupervisor {
           snapshotId: message.snapshot.id,
           snapshotFriendlyId: message.snapshot.friendlyId,
         });
-
-        this.activeTaskCount++;
-        this.logger.log(`Active tasks after creating workload: ${this.activeTaskCount}/${env.TRIGGER_WORKER_MAX_RUN_COUNT}`);
 
         // Disabled for now
         // this.resourceMonitor.blockResources({
@@ -307,21 +283,12 @@ class ManagedSupervisor {
   }
 
   async onRunConnected({ run }: { run: { friendlyId: string } }) {
-    this.logger.debug("Run connected", { 
-      run, 
-      activeTaskCount: this.activeTaskCount,
-      maxRunCount: env.TRIGGER_WORKER_MAX_RUN_COUNT 
-    });
+    this.logger.debug("Run connected", { run });
     this.workerSession.subscribeToRunNotifications([run.friendlyId]);
   }
 
   async onRunDisconnected({ run }: { run: { friendlyId: string } }) {
-    this.activeTaskCount = Math.max(0, this.activeTaskCount - 1);
-    this.logger.debug("Run disconnected", { 
-      run, 
-      activeTaskCount: this.activeTaskCount,
-      maxRunCount: env.TRIGGER_WORKER_MAX_RUN_COUNT 
-    });
+    this.logger.debug("Run disconnected", { run });
     this.workerSession.unsubscribeFromRunNotifications([run.friendlyId]);
   }
 
