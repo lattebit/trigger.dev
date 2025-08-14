@@ -84,6 +84,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     >
   >();
 
+  // Track pending runs that have been dequeued but not yet connected
+  private readonly pendingRuns = new Set<string>();
+  // Track timeouts for pending runs to prevent memory leaks
+  private readonly pendingRunTimeouts = new Map<string, NodeJS.Timeout>();
+
   private readonly workerClient: SupervisorHttpClient;
 
   constructor(opts: WorkloadServerOptions) {
@@ -493,6 +498,14 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         }
 
         this.runSockets.set(friendlyId, socket);
+        // Remove from pending when actually connected
+        this.pendingRuns.delete(friendlyId);
+        // Clear the timeout since the run has connected
+        const timeout = this.pendingRunTimeouts.get(friendlyId);
+        if (timeout) {
+          clearTimeout(timeout);
+          this.pendingRunTimeouts.delete(friendlyId);
+        }
         this.emit("runConnected", { run: { friendlyId } });
         socket.data.runFriendlyId = friendlyId;
       };
@@ -501,6 +514,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         socketLogger.debug("runDisconnected", { ...getSocketMetadata() });
 
         this.runSockets.delete(friendlyId);
+        // Also remove from pending if it was there
+        this.pendingRuns.delete(friendlyId);
         this.emit("runDisconnected", { run: { friendlyId } });
         socket.data.runFriendlyId = undefined;
       };
@@ -572,11 +587,51 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   }
 
   getActiveRunCount(): number {
-    return this.runSockets.size;
+    // Count both connected runs and pending runs
+    return this.runSockets.size + this.pendingRuns.size;
   }
 
   getActiveRuns(): string[] {
     return Array.from(this.runSockets.keys());
+  }
+
+  reservePendingRun(runFriendlyId: string): void {
+    this.pendingRuns.add(runFriendlyId);
+    
+    // Set a timeout to clean up if the run doesn't connect within 5 minutes
+    const timeout = setTimeout(() => {
+      if (this.pendingRuns.has(runFriendlyId)) {
+        this.logger.warn("Pending run timed out, releasing reservation", { runFriendlyId });
+        this.releasePendingRun(runFriendlyId);
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    this.pendingRunTimeouts.set(runFriendlyId, timeout);
+    
+    this.logger.debug("Reserved pending run", { 
+      runFriendlyId, 
+      pendingCount: this.pendingRuns.size,
+      connectedCount: this.runSockets.size,
+      totalCount: this.getActiveRunCount()
+    });
+  }
+
+  releasePendingRun(runFriendlyId: string): void {
+    this.pendingRuns.delete(runFriendlyId);
+    
+    // Clear the timeout if it exists
+    const timeout = this.pendingRunTimeouts.get(runFriendlyId);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.pendingRunTimeouts.delete(runFriendlyId);
+    }
+    
+    this.logger.debug("Released pending run", { 
+      runFriendlyId, 
+      pendingCount: this.pendingRuns.size,
+      connectedCount: this.runSockets.size,
+      totalCount: this.getActiveRunCount()
+    });
   }
 
   notifyRun({ run }: { run: { friendlyId: string } }) {

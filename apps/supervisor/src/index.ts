@@ -142,6 +142,7 @@ class ManagedSupervisor {
           currentRunCount,
           maxRunCount: this.maxRunCount,
           activeRuns,
+          note: "currentRunCount includes both connected and pending runs",
         });
 
         // Skip dequeue if we've reached the maximum run count
@@ -149,6 +150,7 @@ class ManagedSupervisor {
           this.logger.log("Skipping dequeue: max run count reached", {
             currentRunCount,
             maxRunCount: this.maxRunCount,
+            note: "Includes pending runs to prevent over-dequeuing",
           });
           return {
             skipDequeue: true,
@@ -201,6 +203,9 @@ class ManagedSupervisor {
     this.workerSession.on("runQueueMessage", async ({ time, message }) => {
       this.logger.log(`Received message with timestamp ${time.toLocaleString()}`, message);
 
+      // Immediately reserve the run slot to prevent over-dequeuing
+      this.workloadServer.reservePendingRun(message.run.friendlyId);
+      
       if (message.completedWaitpoints.length > 0) {
         this.logger.debug("Run has completed waitpoints", {
           runId: message.run.id,
@@ -210,6 +215,8 @@ class ManagedSupervisor {
 
       if (!message.image) {
         this.logger.error("Run has no image", { runId: message.run.id });
+        // Release the reservation if we can't process the run
+        this.workloadServer.releasePendingRun(message.run.friendlyId);
         return;
       }
 
@@ -220,6 +227,8 @@ class ManagedSupervisor {
 
         if (!this.checkpointClient) {
           this.logger.error("No checkpoint client", { runId: message.run.id });
+          // Release the reservation since we can't restore
+          this.workloadServer.releasePendingRun(message.run.friendlyId);
           return;
         }
 
@@ -235,6 +244,8 @@ class ManagedSupervisor {
 
           if (didRestore) {
             this.logger.log("Restore successful", { runId: message.run.id });
+            // The restore process will handle the connection, so we can release here
+            // as the run will re-connect and be counted properly
           } else {
             this.logger.error("Restore failed", { runId: message.run.id });
           }
@@ -242,6 +253,8 @@ class ManagedSupervisor {
           this.logger.error("Failed to restore run", { error });
         }
 
+        // Release the reservation after restore attempt
+        this.workloadServer.releasePendingRun(message.run.friendlyId);
         return;
       }
 
@@ -251,6 +264,7 @@ class ManagedSupervisor {
 
       if (didWarmStart) {
         this.logger.log("Warm start successful", { runId: message.run.id });
+        // Warm start handles the connection, pending reservation will be cleared when connected
         return;
       }
 
@@ -271,6 +285,9 @@ class ManagedSupervisor {
           snapshotFriendlyId: message.snapshot.friendlyId,
         });
 
+        // The workload will connect and the pending reservation will be cleared then
+        // If the workload fails to start, we should have a timeout to clean up pending reservations
+        
         // Disabled for now
         // this.resourceMonitor.blockResources({
         //   cpu: message.run.machine.cpu,
@@ -278,6 +295,8 @@ class ManagedSupervisor {
         // });
       } catch (error) {
         this.logger.error("Failed to create workload", { error });
+        // Release the reservation if workload creation fails
+        this.workloadServer.releasePendingRun(message.run.friendlyId);
       }
     });
 
