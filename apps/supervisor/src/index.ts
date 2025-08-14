@@ -44,6 +44,7 @@ class ManagedSupervisor {
 
   private readonly isKubernetes = isKubernetesEnvironment(env.KUBERNETES_FORCE_ENABLED);
   private readonly warmStartUrl = env.TRIGGER_WARM_START_URL;
+  private readonly maxRunCount = env.TRIGGER_WORKER_MAX_RUN_COUNT;
 
   constructor() {
     const { TRIGGER_WORKER_TOKEN, MANAGED_WORKER_SECRET, ...envWithoutSecrets } = env;
@@ -133,6 +134,27 @@ class ManagedSupervisor {
       heartbeatIntervalSeconds: env.TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS,
       sendRunDebugLogs: env.SEND_RUN_DEBUG_LOGS,
       preDequeue: async () => {
+        // Check if we've reached the maximum number of running tasks by querying WorkloadServer
+        const currentRunCount = this.workloadServer.getActiveRunCount();
+        const activeRuns = this.workloadServer.getActiveRuns();
+        
+        this.logger.debug("Checking task count before dequeue", {
+          currentRunCount,
+          maxRunCount: this.maxRunCount,
+          activeRuns,
+        });
+
+        // Skip dequeue if we've reached the maximum run count
+        if (currentRunCount >= this.maxRunCount) {
+          this.logger.log("Skipping dequeue: max run count reached", {
+            currentRunCount,
+            maxRunCount: this.maxRunCount,
+          });
+          return {
+            skipDequeue: true,
+          };
+        }
+
         if (!env.RESOURCE_MONITOR_ENABLED) {
           return {};
         }
@@ -285,11 +307,25 @@ class ManagedSupervisor {
   async onRunConnected({ run }: { run: { friendlyId: string } }) {
     this.logger.debug("Run connected", { run });
     this.workerSession.subscribeToRunNotifications([run.friendlyId]);
+    
+    const currentRunCount = this.workloadServer.getActiveRunCount();
+    this.logger.log("Task started", {
+      runId: run.friendlyId,
+      currentRunCount,
+      maxRunCount: this.maxRunCount,
+    });
   }
 
   async onRunDisconnected({ run }: { run: { friendlyId: string } }) {
     this.logger.debug("Run disconnected", { run });
     this.workerSession.unsubscribeFromRunNotifications([run.friendlyId]);
+    
+    const currentRunCount = this.workloadServer.getActiveRunCount();
+    this.logger.log("Task completed", {
+      runId: run.friendlyId,
+      currentRunCount,
+      maxRunCount: this.maxRunCount,
+    });
   }
 
   private async tryWarmStart(dequeuedMessage: DequeuedMessage): Promise<boolean> {

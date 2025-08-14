@@ -571,6 +571,14 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     return websocketServer;
   }
 
+  getActiveRunCount(): number {
+    return this.runSockets.size;
+  }
+
+  getActiveRuns(): string[] {
+    return Array.from(this.runSockets.keys());
+  }
+
   notifyRun({ run }: { run: { friendlyId: string } }) {
     try {
       const runSocket = this.runSockets.get(run.friendlyId);
